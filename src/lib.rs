@@ -108,6 +108,7 @@ use serde::Serialize;
 use std::{
     collections::HashMap,
     error::Error,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -135,6 +136,7 @@ struct LokiLogger {
     url: String,
     initial_labels: Option<HashMap<String, String>>,
     client: reqwest::Client,
+    semaphone: Arc<tokio::sync::Semaphore>,
 }
 
 #[cfg(feature = "blocking")]
@@ -273,10 +275,18 @@ impl log::Log for LokiLogger {
 impl LokiLogger {
     #[cfg(not(feature = "blocking"))]
     fn new<S: AsRef<str>>(url: S, initial_labels: Option<HashMap<String, String>>) -> Self {
+        use std::time::Duration;
+
+        let client = reqwest::Client::builder()
+            .pool_max_idle_per_host(10)
+            .timeout(Duration::new(5, 0))
+            .build()
+            .unwrap();
         Self {
             url: url.as_ref().to_string(),
             initial_labels,
-            client: reqwest::Client::new(),
+            client,
+            semaphone: Arc::new(tokio::sync::Semaphore::new(20)),
         }
     }
 
@@ -295,14 +305,17 @@ impl LokiLogger {
         message: String,
         labels: HashMap<String, String>,
     ) -> Result<(), Box<dyn Error>> {
+        let permit = self.semaphone.clone();
         let client = self.client.clone();
         let url = self.url.clone();
 
         let loki_request = make_request(message, labels)?;
         tokio::spawn(async move {
+            let _permit = permit.acquire().await;
             if let Err(e) = client.post(url).json(&loki_request).send().await {
                 eprintln!("{:?}", e);
             };
+            drop(_permit);
         });
         Ok(())
     }
