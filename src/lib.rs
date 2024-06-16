@@ -346,6 +346,10 @@ impl LokiLogger {
         let values = visitor.read_kv(kv)?;
         let message = format!("{:?}", record.args());
         let mut labels = self.merge_loki_labels(values);
+        let system_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         labels.extend(
             [
                 (
@@ -357,6 +361,7 @@ impl LokiLogger {
                     record.file().unwrap_or("unknown").to_string(),
                 ),
                 ("line".to_string(), record.line().unwrap_or(0).to_string()),
+                ("timestamp".to_string(), system_time.to_string()),
             ]
             .iter()
             .cloned(),
