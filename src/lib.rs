@@ -346,10 +346,22 @@ impl LokiLogger {
         let values = visitor.read_kv(kv)?;
         let message = format!("{:?}", record.args());
         let mut labels = self.merge_loki_labels(values);
-        labels.insert(
-            "level".to_string(),
-            record.level().to_string().to_ascii_lowercase(),
+        labels.extend(
+            [
+                (
+                    "level".to_string(),
+                    record.level().to_string().to_ascii_lowercase(),
+                ),
+                (
+                    "file".to_string(),
+                    record.file().unwrap_or("unknown").to_string(),
+                ),
+                ("line".to_string(), record.line().unwrap_or(0).to_string()),
+            ]
+            .iter()
+            .cloned(),
         );
+
         self.log_to_loki(message, labels)
     }
 }
